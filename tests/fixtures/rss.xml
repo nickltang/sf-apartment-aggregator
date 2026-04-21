@@ -1,0 +1,12 @@
+<rss version="2.0">
+  <channel>
+    <title>Listings</title>
+    <item>
+      <title>2BR with laundry - $3500</title>
+      <link>https://example.com/listing/1?utm_source=abc</link>
+      <description>Mission District apartment with parking</description>
+      <pubDate>Mon, 20 Apr 2026 10:00:00 GMT</pubDate>
+      <guid>abc-1</guid>
+    </item>
+  </channel>
+</rss>

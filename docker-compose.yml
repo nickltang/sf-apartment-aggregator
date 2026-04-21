@@ -1,0 +1,18 @@
+services:
+  aggregator:
+    build: .
+    container_name: sf-apartment-aggregator
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["sf-apt", "poll", "--config", "config.yaml"]
+
+  dashboard:
+    build: .
+    container_name: sf-apartment-dashboard
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["sf-apt", "dashboard", "--config", "config.yaml"]

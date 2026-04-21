@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SF Apartment Aggregator</title>
+    <style>
+      :root {
+        --bg: #f4f7f5;
+        --card: #ffffff;
+        --text: #1d2b23;
+        --muted: #4d6758;
+        --accent: #0f766e;
+        --border: #d5e1dc;
+      }
+      body { margin: 0; font-family: "IBM Plex Sans", "Segoe UI", sans-serif; background: linear-gradient(120deg, #e6f4ef, #f6f7ec); color: var(--text); }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 18px; }
+      h1 { margin: 0 0 10px; font-size: 1.6rem; }
+      .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+      @media (min-width: 900px) { .grid { grid-template-columns: 2fr 1fr; } }
+      .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.05); }
+      table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+      th, td { border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: left; vertical-align: top; }
+      th { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+      .muted { color: var(--muted); }
+      .pill { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 0.75rem; }
+      .ok { background: #d1fae5; color: #065f46; }
+      .bad { background: #fee2e2; color: #991b1b; }
+    </style>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="text/babel" src="/static/app.jsx"></script>
+  </body>
+</html>

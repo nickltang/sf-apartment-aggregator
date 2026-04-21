@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sf-apartment-aggregator"
+version = "0.1.0"
+description = "SF apartment listing poller with Discord alerts and thin dashboard"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "SF Apartment Aggregator" }]
+dependencies = [
+  "beautifulsoup4>=4.12.3",
+  "fastapi>=0.115.0",
+  "feedparser>=6.0.11",
+  "pydantic>=2.9.0",
+  "pyyaml>=6.0.2",
+  "requests>=2.32.3",
+  "typer>=0.12.5",
+  "uvicorn>=0.30.6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28.1",
+  "pytest>=8.3.3",
+]
+
+[project.scripts]
+sf-apt = "sf_apartment_aggregator.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["sf_apartment_aggregator*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
