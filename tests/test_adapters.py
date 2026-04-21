@@ -2,6 +2,7 @@ from pathlib import Path
 
 import requests
 
+from sf_apartment_aggregator.adapters.browser_craigslist import BrowserCraigslistAdapter
 from sf_apartment_aggregator.adapters.html_sources import HTMLSourceAdapter
 from sf_apartment_aggregator.adapters.rss import RSSSourceAdapter
 from sf_apartment_aggregator.config import SourceConfig
@@ -53,3 +54,21 @@ def test_html_adapters_for_each_source_handle_missing_optionals() -> None:
         assert len(listings) == 2
         assert listings[1].price is None
         assert listings[1].beds is None
+
+
+def test_browser_craigslist_parser_extracts_rows() -> None:
+    html = """
+    <div class="cl-search-result" data-pid="123">
+      <a class="cl-app-anchor" href="/sfc/apa/d/san-francisco-sunny-studio/123.html">Sunny Studio</a>
+      <span class="priceinfo">$2,950</span>
+      <span class="housing">1br</span>
+      <span class="location">(mission district)</span>
+    </div>
+    """
+    listings = BrowserCraigslistAdapter.parse_html_document("https://sfbay.craigslist.org/search/sfc/apa", "craigslist_sf", html)
+    assert len(listings) == 1
+    listing = listings[0]
+    assert listing.external_id == "123"
+    assert listing.price == 2950
+    assert listing.beds == 1.0
+    assert "mission" in listing.location_text.lower()

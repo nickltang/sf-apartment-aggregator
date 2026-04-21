@@ -3,14 +3,23 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
+from bs4 import BeautifulSoup
 
-from sf_apartment_aggregator.adapters import AdapterError, HTMLSourceAdapter, RSSSourceAdapter
+from sf_apartment_aggregator.adapters import (
+    AdapterError,
+    BrowserCraigslistAdapter,
+    GaetaniCollectionAdapter,
+    HTMLSourceAdapter,
+    RentSFNowAjaxAdapter,
+    RSSSourceAdapter,
+)
 from sf_apartment_aggregator.config import AppConfig, SourceConfig
 from sf_apartment_aggregator.filters import ListingFilter
-from sf_apartment_aggregator.models import SourceRunResult
-from sf_apartment_aggregator.normalize import utcnow
+from sf_apartment_aggregator.models import NormalizedListing, SourceRunResult
+from sf_apartment_aggregator.normalize import normalize_whitespace, parse_beds, utcnow
 from sf_apartment_aggregator.notifier import DiscordNotifier
 from sf_apartment_aggregator.repository import SQLiteRepository
 
@@ -22,10 +31,36 @@ class PollPipeline:
         self.config = config
         self.repository = repository
         self.session = session or requests.Session()
+        self.session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+        )
         self.filter_engine = ListingFilter(config.filters)
-        self.notifier = DiscordNotifier(str(config.discord.webhook_url) if config.discord.webhook_url else None, self.session)
+        self.strict_webhook_url = (
+            str(config.discord.strict_webhook_url)
+            if config.discord.strict_webhook_url
+            else (str(config.discord.webhook_url) if config.discord.webhook_url else None)
+        )
+        self.broad_webhook_url = str(config.discord.broad_webhook_url) if config.discord.broad_webhook_url else None
+        self.notifier = DiscordNotifier(self.strict_webhook_url, self.session)
+        self._craigslist_enriched: set[str] = set()
 
     def run_cycle(self, *, alerting_enabled: bool) -> dict:
+        if not self._is_in_active_hours():
+            summary = {
+                "ran_at": datetime.utcnow().isoformat() + "Z",
+                "skipped": True,
+                "reason": "outside_active_hours",
+                "active_timezone": self.config.active_timezone,
+                "active_start_hour": self.config.active_start_hour,
+                "active_end_hour": self.config.active_end_hour,
+            }
+            LOGGER.info("poll_skipped", extra={"event": "poll_skipped", "data": summary})
+            return summary
+
         first_run_seed = self.repository.is_first_run() and alerting_enabled
         total_new = 0
         total_alerted = 0
@@ -47,6 +82,11 @@ class PollPipeline:
                 fetched = len(listings)
                 parsed = len(listings)
                 for listing in listings:
+                    if source.name == "craigslist_sf":
+                        self._enrich_craigslist_listing(listing)
+                    inferred = self.filter_engine.infer_neighborhood(listing)
+                    if inferred:
+                        listing.neighborhood = inferred
                     filter_result = self.filter_engine.evaluate(listing)
                     outcome = self.repository.upsert_listing(listing, filter_result)
                     if outcome.is_new:
@@ -54,15 +94,25 @@ class PollPipeline:
 
                     if filter_result.matched:
                         matched_count += 1
+                    if outcome.is_new and alerting_enabled and not first_run_seed:
+                        broad_result = self.filter_engine.evaluate_broad(listing)
                         if (
-                            outcome.is_new
-                            and alerting_enabled
-                            and not first_run_seed
-                            and not self.repository.has_alert_for(outcome.canonical_url)
+                            self.broad_webhook_url
+                            and broad_result.matched
+                            and not self.repository.has_alert_for(outcome.canonical_url, "broad")
                         ):
-                            payload = self.notifier.build_payload(listing)
-                            self.notifier.send(payload)
-                            self.repository.record_alert(outcome.canonical_url, payload, listing.scraped_at)
+                            broad_payload = self.notifier.build_payload(listing, stream="broad")
+                            self.notifier.send(broad_payload, webhook_url=self.broad_webhook_url)
+                            self.repository.record_alert(outcome.canonical_url, broad_payload, listing.scraped_at, "broad")
+                            alerted_count += 1
+                        if (
+                            self.strict_webhook_url
+                            and filter_result.matched
+                            and not self.repository.has_alert_for(outcome.canonical_url, "strict")
+                        ):
+                            strict_payload = self.notifier.build_payload(listing, stream="strict")
+                            self.notifier.send(strict_payload, webhook_url=self.strict_webhook_url)
+                            self.repository.record_alert(outcome.canonical_url, strict_payload, listing.scraped_at, "strict")
                             alerted_count += 1
 
             except Exception as exc:  # intentionally broad to keep cycle alive per source
@@ -122,6 +172,52 @@ class PollPipeline:
         raise last_error
 
     def _adapter_for(self, source: SourceConfig):
+        if source.name == "rentsfnow":
+            return RentSFNowAjaxAdapter(source, self.session)
+        if source.name == "gaetani":
+            return GaetaniCollectionAdapter(source, self.session)
         if source.type == "rss":
             return RSSSourceAdapter(source, self.session)
+        if source.type == "browser":
+            return BrowserCraigslistAdapter(source, self.session)
         return HTMLSourceAdapter(source, self.session)
+
+    def _enrich_craigslist_listing(self, listing: NormalizedListing) -> None:
+        if listing.canonical_url in self._craigslist_enriched:
+            return
+        self._craigslist_enriched.add(listing.canonical_url)
+        try:
+            response = self.session.get(listing.listing_url, timeout=8)
+            if response.status_code >= 400:
+                return
+            soup = BeautifulSoup(response.text, "html.parser")
+            address = normalize_whitespace((soup.select_one(".mapaddress") or {}).get_text(" ", strip=True) if soup.select_one(".mapaddress") else "")
+            body = normalize_whitespace((soup.select_one("#postingbody") or {}).get_text(" ", strip=True) if soup.select_one("#postingbody") else "")
+            attrs = normalize_whitespace(" ".join(el.get_text(" ", strip=True) for el in soup.select(".attrgroup span")))
+            if address:
+                if listing.location_text:
+                    if address.lower() not in listing.location_text.lower():
+                        listing.location_text = f"{listing.location_text} | {address}"
+                else:
+                    listing.location_text = address
+                if not listing.neighborhood:
+                    listing.neighborhood = address
+            if body:
+                listing.summary = body
+            if listing.beds is None:
+                beds = parse_beds(attrs or body or listing.title)
+                if beds is not None:
+                    listing.beds = beds
+        except Exception:
+            return
+
+    def _is_in_active_hours(self) -> bool:
+        now = datetime.now(ZoneInfo(self.config.active_timezone))
+        hour = now.hour
+        start = self.config.active_start_hour
+        end = self.config.active_end_hour
+        if start == end:
+            return True
+        if start < end:
+            return start <= hour < end
+        return hour >= start or hour < end

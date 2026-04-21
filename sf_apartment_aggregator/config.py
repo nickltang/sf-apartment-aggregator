@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -9,7 +10,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 class SourceConfig(BaseModel):
     name: str
-    type: Literal["rss", "html"]
+    type: Literal["rss", "html", "browser"]
     url: HttpUrl
     timeout_seconds: int = 10
     retries: int = 1
@@ -21,12 +22,19 @@ class SourceConfig(BaseModel):
     location_selector: str | None = None
     summary_selector: str | None = None
     published_selector: str | None = None
+    browser_profile_dir: str | None = None
+    browser_executable_path: str | None = None
+    browser_headless: bool = False
+    browser_wait_ms: int = 4000
 
 
 class FilterConfig(BaseModel):
+    min_price: int = 0
     max_price: int
     min_beds: float
     max_beds: float | None = None
+    geo_allowlist: list[str] = Field(default_factory=list)
+    state_allowlist: list[str] = Field(default_factory=list)
     neighborhoods: list[str] = Field(default_factory=list)
     aliases: dict[str, list[str]] = Field(default_factory=dict)
     include_keywords: list[str] = Field(default_factory=list)
@@ -35,6 +43,8 @@ class FilterConfig(BaseModel):
 
 class DiscordConfig(BaseModel):
     webhook_url: HttpUrl | None = None
+    strict_webhook_url: HttpUrl | None = None
+    broad_webhook_url: HttpUrl | None = None
 
 
 class DashboardConfig(BaseModel):
@@ -47,7 +57,10 @@ class LoggingConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
-    poll_interval_minutes: int = 10
+    poll_interval_minutes: int = 20
+    active_timezone: str = "America/Los_Angeles"
+    active_start_hour: int = 8
+    active_end_hour: int = 22
     db_path: str = "data/aggregator.db"
     sources: list[SourceConfig]
     filters: FilterConfig
@@ -59,4 +72,15 @@ class AppConfig(BaseModel):
 def load_config(path: str | Path) -> AppConfig:
     with Path(path).open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
+    discord = raw.setdefault("discord", {})
+    env_webhook = os.getenv("DISCORD_WEBHOOK_URL")
+    env_strict = os.getenv("DISCORD_STRICT_WEBHOOK_URL")
+    env_broad = os.getenv("DISCORD_BROAD_WEBHOOK_URL")
+
+    if env_webhook and not env_strict:
+        env_strict = env_webhook
+    if env_strict:
+        discord["strict_webhook_url"] = env_strict
+    if env_broad:
+        discord["broad_webhook_url"] = env_broad
     return AppConfig.model_validate(raw)

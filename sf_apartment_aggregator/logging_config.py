@@ -18,7 +18,13 @@ class JsonFormatter(logging.Formatter):
             payload["event"] = record.event
         if hasattr(record, "data"):
             payload["data"] = record.data
-        return json.dumps(payload)
+        return json.dumps(payload, default=_json_default)
+
+
+def _json_default(value):  # noqa: ANN001
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
 
 
 def configure_logging(level: str = "INFO") -> None:

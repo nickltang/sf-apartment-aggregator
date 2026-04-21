@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urljoin
+
 from bs4 import BeautifulSoup
 
 from sf_apartment_aggregator.adapters.base import AdapterError, SourceAdapter
@@ -22,6 +24,9 @@ class HTMLSourceAdapter(SourceAdapter):
         listing_nodes = soup.select(selector)
 
         if not listing_nodes:
+            fallback_listings = self._fallback_anchor_listings(soup)
+            if fallback_listings:
+                return fallback_listings
             raise AdapterError("html_no_listing_nodes")
 
         now = utcnow()
@@ -62,6 +67,47 @@ class HTMLSourceAdapter(SourceAdapter):
                     location_text=location,
                     neighborhood=location or None,
                     summary=summary,
+                    scraped_at=now,
+                    published_at=None,
+                )
+            )
+        return listings
+
+    def _fallback_anchor_listings(self, soup: BeautifulSoup) -> list[NormalizedListing]:
+        patterns = [
+            "/apartments/rental/",
+            "/homes-to-rent/",
+            "/listings/detail/",
+            "/vacancies/",
+        ]
+        now = utcnow()
+        seen: set[str] = set()
+        listings: list[NormalizedListing] = []
+        for anchor in soup.select("a[href]"):
+            href = (anchor.get("href") or "").strip()
+            if not href:
+                continue
+            if not any(pattern in href for pattern in patterns):
+                continue
+            listing_url = urljoin(str(self.source.url), href)
+            canonical_url = canonicalize_url(listing_url)
+            if canonical_url in seen:
+                continue
+            seen.add(canonical_url)
+            title = _text(anchor) or listing_url.rstrip("/").split("/")[-1].replace("-", " ").title() or "Untitled Listing"
+            listings.append(
+                NormalizedListing(
+                    source=self.source.name,
+                    source_type="html",
+                    listing_url=listing_url,
+                    canonical_url=canonical_url,
+                    external_id=None,
+                    title=title,
+                    price=parse_price(title),
+                    beds=parse_beds(title),
+                    location_text="",
+                    neighborhood=None,
+                    summary="",
                     scraped_at=now,
                     published_at=None,
                 )
