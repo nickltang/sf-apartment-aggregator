@@ -112,11 +112,21 @@ chmod +x scripts/run_poll.sh scripts/install_launchd_poll.sh
 launchctl print gui/$(id -u)/com.nickltang.sf-apartment-aggregator.poll
 ```
 
+Optional: keep Mac awake during polling hours (8:00 to 22:00 local):
+
+```bash
+chmod +x scripts/run_daytime_caffeinate.sh scripts/install_launchd_awake.sh
+./scripts/install_launchd_awake.sh
+launchctl print gui/$(id -u)/com.nickltang.sf-apartment-aggregator.awake
+```
+
 To stop/uninstall:
 
 ```bash
 launchctl bootout gui/$(id -u)/com.nickltang.sf-apartment-aggregator.poll
 rm ~/Library/LaunchAgents/com.nickltang.sf-apartment-aggregator.poll.plist
+launchctl bootout gui/$(id -u)/com.nickltang.sf-apartment-aggregator.awake
+rm ~/Library/LaunchAgents/com.nickltang.sf-apartment-aggregator.awake.plist
 ```
 
 ## Docker
