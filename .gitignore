@@ -13,3 +13,9 @@ coverage/
 *.log
 *.sqlite3
 *.db
+# Python caches and virtualenv
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
