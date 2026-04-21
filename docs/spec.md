@@ -8,7 +8,7 @@ Build a low-maintenance personal apartment watcher that consolidates SF rental l
 
 ### Phase 1 (Core Watcher)
 
-- Source ingestion from Craigslist RSS and selected SF property management sites.
+- Source ingestion from Craigslist browser-session scraping and selected SF property management sites.
 - Normalization into a unified listing model.
 - Deduplication and persisted seen/alert state in SQLite.
 - Filtering by price, beds, neighborhood aliases, and include/exclude keywords.
@@ -22,10 +22,10 @@ Build a low-maintenance personal apartment watcher that consolidates SF rental l
 
 - Language/runtime: Python.
 - Scheduler: system cron invoking a single-run CLI command.
-- Poll interval target: every 5-10 minutes (configurable).
+- Poll interval target: every 15-30 minutes during daytime active hours (configurable).
 - Persistence: SQLite (keep all rows in v1, no prune job).
 - Config format: YAML.
-- Source strategy: use RSS when available, otherwise HTTP + HTML parsing.
+- Source strategy: use browser-session scraping for Craigslist and HTTP + HTML parsing for selected property-management sites.
 - Browser automation: out of scope for v1.
 - Failure handling: best-effort per run (continue when one source fails).
 - Deployment: local-first with Docker artifacts (`Dockerfile` and `docker-compose`) for portability.
@@ -33,10 +33,10 @@ Build a low-maintenance personal apartment watcher that consolidates SF rental l
 
 ## Source Scope (V1)
 
-### Craigslist (RSS)
+### Craigslist (Browser Session)
 
-- Use Craigslist housing RSS feeds as the primary Craigslist ingestion interface.
-- Do not scrape Craigslist listing HTML for index discovery when RSS is available.
+- Use a local browser-session source with a persistent profile directory to access Craigslist search results.
+- Parse listing rows from Craigslist search pages rendered in the browser context.
 
 ### Property Management Sites (HTTP + HTML)
 
@@ -142,7 +142,7 @@ Optional fields:
 
 Top-level keys:
 
-- `poll_interval_minutes`: integer (recommended 5-10)
+- `poll_interval_minutes`: integer (recommended 15-30)
 - `database_path`: SQLite file path
 - `discord`:
   - `webhook_url`
@@ -204,13 +204,13 @@ All commands return non-zero exit codes on unrecoverable failures. `poll` still 
 
 ## Parser Fixture Tests
 
-- Craigslist RSS parsing fixture.
+- Craigslist browser-result parsing fixture.
 - Greystar, RentSFNow, and Gaetani HTML fixtures.
 - Missing/partial field scenarios (no beds, no published date, ambiguous price).
 
 ## Integration Tests
 
-- End-to-end `poll` with mocked HTTP/RSS and mocked Discord webhook:
+- End-to-end `poll` with mocked HTTP/browser-session fetch and mocked Discord webhook:
   - first run seeds without alerts
   - second run alerts only new matches
   - source-level failure does not block other sources

@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from sf_apartment_aggregator.dashboard import create_dashboard_app
 from sf_apartment_aggregator.filters import FilterResult
-from sf_apartment_aggregator.models import NormalizedListing
+from sf_apartment_aggregator.models import AlertPayload, NormalizedListing
 from sf_apartment_aggregator.normalize import utcnow
 from sf_apartment_aggregator.repository import SQLiteRepository
 
@@ -25,6 +25,11 @@ def test_dashboard_endpoints(temp_db_path: str):
         published_at=None,
     )
     repo.upsert_listing(listing, FilterResult(True, "matched"))
+    repo.record_alert(
+        listing.canonical_url,
+        payload=AlertPayload(title="t", url="u", description="d", fields=[], timestamp=utcnow().isoformat()),
+        alerted_at=utcnow(),
+    )
 
     app = create_dashboard_app(repo)
     client = TestClient(app)
@@ -32,4 +37,5 @@ def test_dashboard_endpoints(temp_db_path: str):
     assert client.get("/api/listings").status_code == 200
     assert client.get("/api/source-health").status_code == 200
     assert client.get("/api/alerts").status_code == 200
+    assert client.get("/api/alerts?alert_type=strict").status_code == 200
     repo.close()

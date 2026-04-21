@@ -21,8 +21,8 @@ def create_dashboard_app(repository: SQLiteRepository) -> FastAPI:
         return {"items": repository.get_source_health()}
 
     @app.get("/api/alerts")
-    def alerts(limit: int = 200):
-        return {"items": repository.get_alert_history(limit=limit)}
+    def alerts(limit: int = 200, alert_type: str | None = None):
+        return {"items": repository.get_alert_history(limit=limit, alert_type=alert_type)}
 
     static_dir = Path(__file__).parent / "dashboard_static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")

@@ -12,12 +12,13 @@ class DiscordNotifier:
     webhook_url: str | None
     session: requests.Session
 
-    def build_payload(self, listing: NormalizedListing) -> AlertPayload:
+    def build_payload(self, listing: NormalizedListing, *, stream: str = "strict") -> AlertPayload:
         fields = [
             {"name": "Price", "value": str(listing.price) if listing.price is not None else "Unknown", "inline": "true"},
             {"name": "Beds", "value": str(listing.beds) if listing.beds is not None else "Unknown", "inline": "true"},
             {"name": "Source", "value": listing.source, "inline": "true"},
             {"name": "Location", "value": listing.location_text or "Unknown", "inline": "false"},
+            {"name": "Stream", "value": stream, "inline": "true"},
         ]
         return AlertPayload(
             title=listing.title,
@@ -27,8 +28,9 @@ class DiscordNotifier:
             timestamp=listing.scraped_at.isoformat(),
         )
 
-    def send(self, payload: AlertPayload) -> None:
-        if not self.webhook_url:
+    def send(self, payload: AlertPayload, *, webhook_url: str | None = None) -> None:
+        target = webhook_url or self.webhook_url
+        if not target:
             return
-        response = self.session.post(self.webhook_url, json=payload.as_discord_embed(), timeout=10)
+        response = self.session.post(target, json=payload.as_discord_embed(), timeout=10)
         response.raise_for_status()

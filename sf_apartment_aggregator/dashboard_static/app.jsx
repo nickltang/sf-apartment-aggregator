@@ -14,7 +14,8 @@ function useApi(path) {
 function App() {
   const listings = useApi('/api/listings?limit=100');
   const health = useApi('/api/source-health');
-  const alerts = useApi('/api/alerts?limit=50');
+  const strictAlerts = useApi('/api/alerts?limit=30&alert_type=strict');
+  const broadAlerts = useApi('/api/alerts?limit=30&alert_type=broad');
 
   return (
     <div className="wrap">
@@ -56,12 +57,26 @@ function App() {
           </div>
           <div className="card">
             <h3>Alert History</h3>
-            {alerts.map((a) => (
-              <div key={a.id} style={{marginBottom: '8px'}}>
-                <strong>{a.title || a.canonical_url}</strong>
-                <div className="muted">{a.source} · {a.alerted_at}</div>
-              </div>
-            ))}
+            <div style={{marginBottom: '10px'}}>
+              <strong>Strict</strong>
+              {strictAlerts.length === 0 && <div className="muted">No strict alerts yet.</div>}
+              {strictAlerts.map((a) => (
+                <div key={`strict-${a.id}`} style={{marginBottom: '8px'}}>
+                  <strong>{a.title || a.canonical_url}</strong>
+                  <div className="muted">{a.source} · {a.alerted_at}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <strong>Broad</strong>
+              {broadAlerts.length === 0 && <div className="muted">No broad alerts yet.</div>}
+              {broadAlerts.map((a) => (
+                <div key={`broad-${a.id}`} style={{marginBottom: '8px'}}>
+                  <strong>{a.title || a.canonical_url}</strong>
+                  <div className="muted">{a.source} · {a.alerted_at}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

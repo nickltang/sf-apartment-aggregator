@@ -25,12 +25,17 @@ def parse_price(value: str | None) -> int | None:
     match = PRICE_RE.search(value)
     if not match:
         return None
-    return int(match.group(1).replace(",", ""))
+    numeric = match.group(1).replace(",", "").strip()
+    if not numeric.isdigit():
+        return None
+    return int(numeric)
 
 
 def parse_beds(value: str | None) -> float | None:
     if not value:
         return None
+    if "studio" in value.lower():
+        return 0.0
     match = BEDS_RE.search(value)
     if not match:
         return None

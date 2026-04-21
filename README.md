@@ -4,7 +4,7 @@ V1 apartment watcher for San Francisco rentals.
 
 ## Features
 
-- Polls RSS + HTML sources and normalizes listing records.
+- Polls browser, RSS, and HTML sources and normalizes listing records.
 - Deduplicates by canonical URL with secondary `source + external_id` key.
 - Applies configurable filters (price, beds, neighborhoods, include/exclude keywords).
 - Sends one Discord embed per new matching listing.
@@ -19,6 +19,7 @@ V1 apartment watcher for San Francisco rentals.
 - `pip`
 - `git`
 - Optional: Docker + Docker Compose
+- For Craigslist browser mode: Playwright browser runtime (`playwright install chromium`)
 
 ### 1. Clone the repository
 
@@ -40,15 +41,40 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
+Install Playwright browser binaries:
+
+```bash
+playwright install chromium
+```
+
 ### 4. Configure the app
 
 Edit [`config.yaml`](/Users/nicholastang/workspace/sf-apartment-aggregator/config.yaml):
 
 - `db_path`: where SQLite state is stored
-- `sources[]`: RSS/HTML sources and selectors
+- `poll_interval_minutes`: target polling cadence (default `20`)
+- `active_timezone`, `active_start_hour`, `active_end_hour`: run-window controls (daytime-only polling)
+- `sources[]`: browser/RSS/HTML sources and selectors
 - `filters`: max price, beds, neighborhoods, aliases, keywords
 - `discord.webhook_url`: webhook for alerts (optional but needed for Discord notifications)
 - `dashboard.host`/`dashboard.port`: local dashboard bind settings
+
+Recommended for secrets: keep webhook URL in `.env` (not committed) and leave `discord.webhook_url` empty in YAML.
+
+```bash
+cp .env.example .env
+# Edit .env and set:
+# DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+# or stream-specific:
+# DISCORD_STRICT_WEBHOOK_URL=https://discord.com/api/webhooks/...  # high-intent matches
+# DISCORD_BROAD_WEBHOOK_URL=https://discord.com/api/webhooks/...   # broad SF-area new listings
+```
+
+For Craigslist browser mode:
+
+- Set `sources[].type: browser`
+- Set `sources[].browser_profile_dir` to a persistent local Chrome profile path
+- Run one manual poll and complete any Craigslist challenge in the opened browser profile
 
 ### 5. Run commands
 
@@ -72,10 +98,25 @@ With defaults from `config.yaml`, open:
 
 ## Scheduling
 
-Use system cron for polling every 10 minutes:
+Use system cron for polling every 20 minutes during daytime:
 
 ```cron
-*/10 * * * * cd /path/to/sf-apartment-aggregator && /path/to/.venv/bin/sf-apt poll --config config.yaml >> logs/poll.log 2>&1
+*/20 8-21 * * * cd /path/to/sf-apartment-aggregator && /path/to/.venv/bin/sf-apt poll --config config.yaml >> logs/poll.log 2>&1
+```
+
+macOS recommended path: `launchd`.
+
+```bash
+chmod +x scripts/run_poll.sh scripts/install_launchd_poll.sh
+./scripts/install_launchd_poll.sh
+launchctl print gui/$(id -u)/com.nickltang.sf-apartment-aggregator.poll
+```
+
+To stop/uninstall:
+
+```bash
+launchctl bootout gui/$(id -u)/com.nickltang.sf-apartment-aggregator.poll
+rm ~/Library/LaunchAgents/com.nickltang.sf-apartment-aggregator.poll.plist
 ```
 
 ## Docker
@@ -115,7 +156,8 @@ Core application package: [`sf_apartment_aggregator/`](/Users/nicholastang/works
 
 Source adapters:
 
-- [`adapters/rss.py`](/Users/nicholastang/workspace/sf-apartment-aggregator/sf_apartment_aggregator/adapters/rss.py): Craigslist-style RSS ingestion
+- [`adapters/browser_craigslist.py`](/Users/nicholastang/workspace/sf-apartment-aggregator/sf_apartment_aggregator/adapters/browser_craigslist.py): Craigslist browser-profile ingestion (Playwright)
+- [`adapters/rss.py`](/Users/nicholastang/workspace/sf-apartment-aggregator/sf_apartment_aggregator/adapters/rss.py): RSS ingestion
 - [`adapters/html_sources.py`](/Users/nicholastang/workspace/sf-apartment-aggregator/sf_apartment_aggregator/adapters/html_sources.py): HTML parsing with CSS selectors
 
 Dashboard:

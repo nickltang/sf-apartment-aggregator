@@ -60,6 +60,7 @@ class SQLiteRepository:
             CREATE TABLE IF NOT EXISTS alerts (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               canonical_url TEXT NOT NULL,
+              alert_type TEXT NOT NULL DEFAULT 'strict',
               alerted_at TEXT NOT NULL,
               payload_json TEXT NOT NULL
             );
@@ -88,6 +89,14 @@ class SQLiteRepository:
             );
             """
         )
+        existing_columns = {
+            row["name"] for row in self.conn.execute("PRAGMA table_info(alerts)").fetchall()
+        }
+        if "alert_type" not in existing_columns:
+            self.conn.execute("ALTER TABLE alerts ADD COLUMN alert_type TEXT NOT NULL DEFAULT 'strict'")
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_canonical_type ON alerts(canonical_url, alert_type)"
+        )
         self.conn.commit()
 
     def is_first_run(self) -> bool:
@@ -103,8 +112,31 @@ class SQLiteRepository:
             ).fetchone()
             if existing_by_external:
                 self.conn.execute(
-                    "UPDATE listings SET last_seen_at = ?, scraped_at = ?, last_match_status = ?, last_match_reason = ? WHERE canonical_url = ?",
-                    (now, now, int(filter_result.matched), filter_result.reason, existing_by_external["canonical_url"]),
+                    """
+                    UPDATE listings SET
+                      source = ?, source_type = ?, listing_url = ?, external_id = ?, title = ?, price = ?, beds = ?,
+                      location_text = ?, neighborhood = ?, summary = ?, scraped_at = ?, published_at = ?, last_seen_at = ?,
+                      last_match_status = ?, last_match_reason = ?
+                    WHERE canonical_url = ?
+                    """,
+                    (
+                        listing.source,
+                        listing.source_type,
+                        listing.listing_url,
+                        listing.external_id,
+                        listing.title,
+                        listing.price,
+                        listing.beds,
+                        listing.location_text,
+                        listing.neighborhood,
+                        listing.summary,
+                        now,
+                        listing.published_at.isoformat() if listing.published_at else None,
+                        now,
+                        int(filter_result.matched),
+                        filter_result.reason,
+                        existing_by_external["canonical_url"],
+                    ),
                 )
                 self.conn.commit()
                 return UpsertOutcome(existing_by_external["canonical_url"], False)
@@ -185,14 +217,17 @@ class SQLiteRepository:
         self.conn.commit()
         return UpsertOutcome(listing.canonical_url, True)
 
-    def has_alert_for(self, canonical_url: str) -> bool:
-        row = self.conn.execute("SELECT 1 FROM alerts WHERE canonical_url = ? LIMIT 1", (canonical_url,)).fetchone()
+    def has_alert_for(self, canonical_url: str, alert_type: str = "strict") -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM alerts WHERE canonical_url = ? AND alert_type = ? LIMIT 1",
+            (canonical_url, alert_type),
+        ).fetchone()
         return row is not None
 
-    def record_alert(self, canonical_url: str, payload: AlertPayload, alerted_at: datetime) -> None:
+    def record_alert(self, canonical_url: str, payload: AlertPayload, alerted_at: datetime, alert_type: str = "strict") -> None:
         self.conn.execute(
-            "INSERT INTO alerts(canonical_url, alerted_at, payload_json) VALUES (?, ?, ?)",
-            (canonical_url, alerted_at.isoformat(), json.dumps(payload.as_discord_embed())),
+            "INSERT OR IGNORE INTO alerts(canonical_url, alert_type, alerted_at, payload_json) VALUES (?, ?, ?, ?)",
+            (canonical_url, alert_type, alerted_at.isoformat(), json.dumps(payload.as_discord_embed())),
         )
         self.conn.commit()
 
@@ -262,15 +297,28 @@ class SQLiteRepository:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_alert_history(self, limit: int = 200) -> list[dict]:
-        rows = self.conn.execute(
-            """
-            SELECT a.id, a.canonical_url, a.alerted_at, l.title, l.price, l.beds, l.source
-            FROM alerts a
-            LEFT JOIN listings l ON l.canonical_url = a.canonical_url
-            ORDER BY a.alerted_at DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+    def get_alert_history(self, limit: int = 200, alert_type: str | None = None) -> list[dict]:
+        if alert_type:
+            rows = self.conn.execute(
+                """
+                SELECT a.id, a.canonical_url, a.alert_type, a.alerted_at, l.title, l.price, l.beds, l.source
+                FROM alerts a
+                LEFT JOIN listings l ON l.canonical_url = a.canonical_url
+                WHERE a.alert_type = ?
+                ORDER BY a.alerted_at DESC
+                LIMIT ?
+                """,
+                (alert_type, limit),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                """
+                SELECT a.id, a.canonical_url, a.alert_type, a.alerted_at, l.title, l.price, l.beds, l.source
+                FROM alerts a
+                LEFT JOIN listings l ON l.canonical_url = a.canonical_url
+                ORDER BY a.alerted_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
         return [dict(r) for r in rows]

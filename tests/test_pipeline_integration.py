@@ -21,7 +21,7 @@ class SessionMock(requests.Session):
         super().__init__()
         self.rss_text = rss_text
         self.html_text = html_text
-        self.sent_payloads = []
+        self.sent_payloads: list[dict] = []
 
     def get(self, url, timeout=None, **kwargs):  # noqa: ANN001
         if str(url).endswith("feed.xml"):
@@ -29,7 +29,7 @@ class SessionMock(requests.Session):
         return DummyResponse(self.html_text)
 
     def post(self, url, json=None, timeout=None, **kwargs):  # noqa: ANN001
-        self.sent_payloads.append(json)
+        self.sent_payloads.append({"url": str(url), "json": json})
         return DummyResponse("", 204)
 
 
@@ -53,5 +53,29 @@ def test_poll_new_only_alert_behavior(app_config):
 
     second = pipeline.run_cycle(alerting_enabled=True)
     assert second["alerted"] == 0
+
+    repo.close()
+
+
+def test_poll_dual_stream_alerts(app_config):
+    app_config.discord.strict_webhook_url = "https://discord.example.com/strict"
+    app_config.discord.broad_webhook_url = "https://discord.example.com/broad"
+    app_config.filters.neighborhoods = []
+    app_config.filters.include_keywords = []
+    repo = SQLiteRepository(app_config.db_path)
+    session = SessionMock(_rss(), _html())
+    pipeline = PollPipeline(app_config, repo, session=session)
+
+    # seed baseline without notifications
+    pipeline.run_cycle(alerting_enabled=False)
+
+    # introduce one strict+geo matching new listing
+    session.rss_text = """<rss version='2.0'><channel><item><title>1BR laundry $3200</title><link>https://example.com/1</link><description>Mission District</description><guid>1</guid></item><item><title>1BR laundry $3100</title><link>https://example.com/3</link><description>Mission District</description><guid>3</guid></item></channel></rss>"""
+    second = pipeline.run_cycle(alerting_enabled=True)
+
+    assert second["alerted"] == 2
+    urls = [item["url"] for item in session.sent_payloads]
+    assert "https://discord.example.com/broad" in urls
+    assert "https://discord.example.com/strict" in urls
 
     repo.close()

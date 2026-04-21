@@ -1,69 +1,53 @@
-poll_interval_minutes: 10
+poll_interval_minutes: 20
+active_timezone: America/Los_Angeles
+active_start_hour: 8
+active_end_hour: 22
 db_path: data/aggregator.db
 sources:
   - name: craigslist_sf
-    type: rss
-    url: https://sfbay.craigslist.org/search/sfc/apa?format=rss
+    type: browser
+    url: https://sfbay.craigslist.org/search/sfc/apa?max_price=3500&min_bedrooms=1
+    browser_profile_dir: ~/.sf-apt/craigslist-profile
+    browser_headless: false
+    browser_wait_ms: 6000
     timeout_seconds: 10
-    retries: 1
+    retries: 0
   - name: greystar
     type: html
-    url: https://www.greystar.com/apartments/san-francisco-ca
+    url: https://www.greystar.com/homes-to-rent/us/ca/san-francisco
     timeout_seconds: 10
     retries: 1
-    listing_selector: .listing
-    title_selector: .title
-    url_selector: a
-    price_selector: .price
-    beds_selector: .beds
-    location_selector: .location
-    summary_selector: .summary
   - name: rentsfnow
     type: html
-    url: https://www.rentsfnow.com/apartments/san-francisco
+    url: https://www.rentsfnow.com/wp-admin/admin-ajax.php
     timeout_seconds: 10
     retries: 1
-    listing_selector: .listing
-    title_selector: .title
-    url_selector: a
-    price_selector: .price
-    beds_selector: .beds
-    location_selector: .location
-    summary_selector: .summary
   - name: gaetani
     type: html
-    url: https://www.gaetanirealestate.com/rentals
+    url: https://www.gaetanirealestate.com/rts/collections/public/cd92d571/runtime/collection/appfolio-listings/query-data?pageSize=100&pageNumber=0&query=%28%29&language=ENGLISH
     timeout_seconds: 10
     retries: 1
-    listing_selector: .listing
-    title_selector: .title
-    url_selector: a
-    price_selector: .price
-    beds_selector: .beds
-    location_selector: .location
-    summary_selector: .summary
-  - name: jwavro
-    type: html
-    url: https://jwavro.com/rentals
-    timeout_seconds: 10
-    retries: 1
-    listing_selector: .listing
-    title_selector: .title
-    url_selector: a
-    price_selector: .price
-    beds_selector: .beds
-    location_selector: .location
-    summary_selector: .summary
 filters:
-  max_price: 4500
+  max_price: 3500
+  min_price: 0
   min_beds: 1
-  max_beds: 3
-  neighborhoods: ["Mission", "Noe Valley", "Inner Sunset"]
+  max_beds: 1
+  geo_allowlist: ["San Francisco", "SF", "Nob Hill", "Lower Nob Hill", "Richmond", "Sunset", "Noe Valley", "Mission", "Mission District", "South of Market", "SoMa", "Tenderloin", "North Beach", "Potrero Hill", "Bernal Heights", "Castro", "Haight", "Japantown", "Pacific Heights", "Inner Richmond", "Outer Richmond", "Inner Sunset", "Outer Sunset", "Daly City", "South San Francisco", "Brisbane", "Pacifica", "San Bruno", "Millbrae", "Burlingame", "San Mateo", "Redwood City", "Palo Alto", "Mountain View", "San Jose", "Oakland", "Berkeley", "Alameda", "Emeryville", "Richmond", "El Cerrito", "Albany", "San Leandro", "Hayward", "Fremont", "Marin", "Sausalito", "Mill Valley", "San Rafael", "Larkspur", "Novato", "Walnut Creek", "Concord", "Lafayette", "Orinda"]
+  state_allowlist: ["CA"]
+  neighborhoods: ["Richmond", "Nopa", "Sunset", "Laurel Heights", "Presidio Heights", "Lower Pacific Heights", "Japantown", "Lone Mountain", "Cole Valley", "Western Addition", "Nob Hill"]
   aliases:
-    Mission: ["The Mission", "Mission District"]
-    "Noe Valley": ["Noe"]
-    "Inner Sunset": ["Sunset"]
-  include_keywords: ["laundry", "parking"]
+    Richmond: ["Inner Richmond", "Outer Richmond", "Richmond District", "richmond / seacliff", "Richmond / Seacliff"]
+    Nopa: ["NoPa", "North of Panhandle", "north of panhandle", "NOPA"]
+    Sunset: ["Inner Sunset", "Outer Sunset", "Sunset District", "sunset", "inner sunset / UCSF"]
+    "Laurel Heights": ["Laural Heights", "Jordan Park"]
+    "Presidio Heights": ["Presidio", "presidio heights"]
+    "Lower Pacific Heights": ["Lower Pac Heights", "Pac Heights", "Pacific Heights", "lower pacific heights", "pac heights"]
+    Japantown: ["Japan Town", "Japantown / Fillmore"]
+    "Lone Mountain": ["Lone Mountain / USF", "USF / Lone Mountain"]
+    "Cole Valley": ["Cole Valley / Ashbury Heights"]
+    "Western Addition": ["Lower Fillmore", "Fillmore", "Alamo Square", "Western Addition / Fillmore"]
+    "Nob Hill": ["Lower Nob Hill", "Nob Hill / Polk", "nob hill", "lower nob hill"]
+  include_keywords: []
   exclude_keywords: ["senior housing", "income restricted"]
 discord:
   webhook_url:

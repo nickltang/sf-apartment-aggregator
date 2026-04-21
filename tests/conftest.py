@@ -29,6 +29,8 @@ def filter_config() -> FilterConfig:
 def app_config(temp_db_path: str, filter_config: FilterConfig) -> AppConfig:
     return AppConfig(
         poll_interval_minutes=10,
+        active_start_hour=0,
+        active_end_hour=0,
         db_path=temp_db_path,
         sources=[
             SourceConfig(name="craigslist", type="rss", url="https://example.com/feed.xml"),
