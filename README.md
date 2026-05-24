@@ -112,8 +112,8 @@ During `poll`, logs are emitted as JSON to stdout. You should now see:
 
 Important first-run behavior:
 
-- The first successful `poll` seeds the baseline in SQLite and usually does not send Discord alerts for already-existing listings.
-- Later `poll` runs send alerts only for newly seen matching listings.
+- The first successful `poll` seeds the baseline in SQLite and can send Discord alerts for newly seen matching listings from that initial run.
+- Later `poll` runs continue to send alerts only for newly seen matching listings.
 - If you run `sf-apt poll --config config.yaml` manually, logs appear in that terminal. They do not go to `logs/poll.out.log` unless you use `launchd` or redirect output yourself.
 
 ### 6. Open dashboard

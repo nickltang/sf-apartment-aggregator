@@ -146,7 +146,7 @@ class PollPipeline:
 
                     if filter_result.matched:
                         matched_count += 1
-                    if outcome.is_new and alerting_enabled and not first_run_seed:
+                    if outcome.is_new and alerting_enabled:
                         broad_result = self.filter_engine.evaluate_broad(listing)
                         if (
                             self.broad_webhook_url
