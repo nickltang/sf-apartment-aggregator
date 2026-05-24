@@ -20,6 +20,13 @@ LOGGER = logging.getLogger("sf_apartment_aggregator.cli")
 def poll(config: str = typer.Option("config.yaml", help="Path to config YAML")) -> None:
     app_config = load_config(config)
     configure_logging(app_config.logging.level)
+    LOGGER.info(
+        "poll_started",
+        extra={
+            "event": "poll_started",
+            "data": {"config": str(Path(config).resolve()), "db_path": app_config.db_path, "sources": len(app_config.sources)},
+        },
+    )
     repo = SQLiteRepository(app_config.db_path)
     try:
         summary = PollPipeline(app_config, repo).run_cycle(alerting_enabled=True)
@@ -32,6 +39,13 @@ def poll(config: str = typer.Option("config.yaml", help="Path to config YAML")) 
 def backfill(config: str = typer.Option("config.yaml", help="Path to config YAML")) -> None:
     app_config = load_config(config)
     configure_logging(app_config.logging.level)
+    LOGGER.info(
+        "backfill_started",
+        extra={
+            "event": "backfill_started",
+            "data": {"config": str(Path(config).resolve()), "db_path": app_config.db_path, "sources": len(app_config.sources)},
+        },
+    )
     repo = SQLiteRepository(app_config.db_path)
     try:
         summary = PollPipeline(app_config, repo).run_cycle(alerting_enabled=False)
@@ -44,6 +58,18 @@ def backfill(config: str = typer.Option("config.yaml", help="Path to config YAML
 def dashboard(config: str = typer.Option("config.yaml", help="Path to config YAML")) -> None:
     app_config = load_config(config)
     configure_logging(app_config.logging.level)
+    LOGGER.info(
+        "dashboard_started",
+        extra={
+            "event": "dashboard_started",
+            "data": {
+                "config": str(Path(config).resolve()),
+                "db_path": app_config.db_path,
+                "url": f"http://{app_config.dashboard.host}:{app_config.dashboard.port}",
+                "note": "dashboard serves UI only; run `sf-apt poll --config ...` separately to ingest listings",
+            },
+        },
+    )
     repo = SQLiteRepository(app_config.db_path)
     dashboard_app = create_dashboard_app(repo)
     uvicorn.run(dashboard_app, host=app_config.dashboard.host, port=app_config.dashboard.port, log_level="info")

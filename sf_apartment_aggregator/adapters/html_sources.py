@@ -45,8 +45,7 @@ class HTMLSourceAdapter(SourceAdapter):
             listing_url = link_el.get("href", "").strip()
             if not listing_url:
                 continue
-            if listing_url.startswith("/"):
-                listing_url = str(self.source.url).rstrip("/") + listing_url
+            listing_url = urljoin(str(self.source.url), listing_url)
 
             title = _text(title_el) or _text(link_el) or "Untitled Listing"
             summary = _text(summary_el)

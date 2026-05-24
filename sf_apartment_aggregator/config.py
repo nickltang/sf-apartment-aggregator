@@ -14,6 +14,9 @@ class SourceConfig(BaseModel):
     url: HttpUrl
     timeout_seconds: int = 10
     retries: int = 1
+    min_poll_interval_minutes: int | None = None
+    cooldown_on_block_minutes: int | None = None
+    enrich_detail_pages: bool = True
     listing_selector: str | None = None
     title_selector: str | None = None
     url_selector: str | None = None
@@ -69,8 +72,27 @@ class AppConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
+def _load_dotenv(env_path: Path) -> None:
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        os.environ[key] = value
+
+
 def load_config(path: str | Path) -> AppConfig:
-    with Path(path).open("r", encoding="utf-8") as handle:
+    config_path = Path(path)
+    _load_dotenv(config_path.resolve().parent / ".env")
+    with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
     discord = raw.setdefault("discord", {})
     env_webhook = os.getenv("DISCORD_WEBHOOK_URL")

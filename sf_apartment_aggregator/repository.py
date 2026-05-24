@@ -255,6 +255,20 @@ class SQLiteRepository:
         )
         self.conn.commit()
 
+    def get_latest_source_run(self, source: str) -> dict | None:
+        row = self.conn.execute(
+            """
+            SELECT source, source_type, started_at, finished_at, success, fetched_count, parsed_count,
+                   new_count, matched_count, alerted_count, error_message
+            FROM source_runs
+            WHERE source = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (source,),
+        ).fetchone()
+        return dict(row) if row else None
+
     def record_parse_error(self, source: str, url: str | None, message: str, created_at: datetime) -> None:
         self.conn.execute(
             "INSERT INTO parse_errors(source, url, error_message, created_at) VALUES (?, ?, ?, ?)",

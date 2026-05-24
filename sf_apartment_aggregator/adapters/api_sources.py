@@ -18,6 +18,10 @@ def _text(element) -> str:
 def _parse_iso_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _parse_dollar_price(value: str | None) -> int | None:
@@ -30,10 +34,6 @@ def _parse_dollar_price(value: str | None) -> int | None:
     if not digits.isdigit():
         return None
     return int(digits)
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 class RentSFNowAjaxAdapter(SourceAdapter):

@@ -1,7 +1,9 @@
 from pathlib import Path
 
 import requests
+import pytest
 
+from sf_apartment_aggregator.adapters.base import AdapterError
 from sf_apartment_aggregator.adapters.browser_craigslist import BrowserCraigslistAdapter
 from sf_apartment_aggregator.adapters.html_sources import HTMLSourceAdapter
 from sf_apartment_aggregator.adapters.rss import RSSSourceAdapter
@@ -56,6 +58,27 @@ def test_html_adapters_for_each_source_handle_missing_optionals() -> None:
         assert listings[1].beds is None
 
 
+def test_html_adapter_resolves_relative_listing_urls() -> None:
+    source = SourceConfig(
+        name="example",
+        type="html",
+        url="https://example.com/rentals/search",
+        listing_selector=".listing",
+        title_selector=".title",
+        url_selector="a",
+    )
+    html = """
+    <div class="listing">
+      <a href="detail/123"><span class="title">Example Listing</span></a>
+    </div>
+    """
+    adapter = HTMLSourceAdapter(source, DummySession({"https://example.com/rentals/search": html}))
+    listings = adapter.fetch()
+
+    assert len(listings) == 1
+    assert listings[0].listing_url == "https://example.com/rentals/detail/123"
+
+
 def test_browser_craigslist_parser_extracts_rows() -> None:
     html = """
     <div class="cl-search-result" data-pid="123">
@@ -72,3 +95,21 @@ def test_browser_craigslist_parser_extracts_rows() -> None:
     assert listing.price == 2950
     assert listing.beds == 1.0
     assert "mission" in listing.location_text.lower()
+
+
+@pytest.mark.parametrize(
+    ("html", "expected_error"),
+    [
+        ("<html><head><title>Craigslist | Human Verification</title></head><body>Verify you are human</body></html>", "craigslist_challenge_page"),
+        ("<html><body><p>Your request has been blocked.</p></body></html>", "craigslist_blocked_page"),
+        ("<html><body><p>Zero local results found for this search</p></body></html>", "craigslist_no_results"),
+        ("<html><body><div id='unexpected-app-shell'></div></body></html>", "craigslist_selector_mismatch"),
+    ],
+)
+def test_browser_craigslist_parser_classifies_empty_pages(html: str, expected_error: str) -> None:
+    with pytest.raises(AdapterError, match=expected_error):
+        BrowserCraigslistAdapter.parse_html_document(
+            "https://sfbay.craigslist.org/search/sfc/apa",
+            "craigslist_sf",
+            html,
+        )

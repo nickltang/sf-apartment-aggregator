@@ -105,5 +105,42 @@ class BrowserCraigslistAdapter(SourceAdapter):
                 )
             )
         if not listings:
-            raise AdapterError("browser_no_listing_nodes")
+            raise AdapterError(BrowserCraigslistAdapter._classify_empty_result_page(soup))
         return listings
+
+    @staticmethod
+    def _classify_empty_result_page(soup: BeautifulSoup) -> str:
+        page_text = normalize_whitespace(soup.get_text(" ", strip=True)).lower()
+        page_title = normalize_whitespace(soup.title.get_text(" ", strip=True) if soup.title else "").lower()
+
+        challenge_markers = [
+            "are you human",
+            "human verification",
+            "verify you are human",
+            "press and hold",
+            "security check",
+            "complete the captcha",
+            "captcha",
+        ]
+        if any(marker in page_text or marker in page_title for marker in challenge_markers):
+            return "craigslist_challenge_page"
+
+        blocked_markers = [
+            "your request has been blocked",
+            "request has been blocked",
+        ]
+        if any(marker in page_text or marker in page_title for marker in blocked_markers):
+            return "craigslist_blocked_page"
+
+        no_results_markers = [
+            "no results found",
+            "there are no results",
+            "zero local results found",
+        ]
+        if any(marker in page_text for marker in no_results_markers):
+            return "craigslist_no_results"
+
+        if soup.select("form[action*='captcha']") or soup.select("iframe[src*='captcha']"):
+            return "craigslist_challenge_page"
+
+        return "craigslist_selector_mismatch"

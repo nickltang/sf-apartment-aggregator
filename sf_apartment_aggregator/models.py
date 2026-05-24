@@ -27,7 +27,7 @@ class AlertPayload:
     title: str
     url: str
     description: str
-    fields: list[dict[str, str]]
+    fields: list[dict[str, Any]]
     timestamp: str
 
     def as_discord_embed(self) -> dict[str, Any]:

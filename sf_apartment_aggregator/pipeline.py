@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import requests
@@ -20,7 +20,7 @@ from sf_apartment_aggregator.config import AppConfig, SourceConfig
 from sf_apartment_aggregator.filters import ListingFilter
 from sf_apartment_aggregator.models import NormalizedListing, SourceRunResult
 from sf_apartment_aggregator.normalize import normalize_whitespace, parse_beds, utcnow
-from sf_apartment_aggregator.notifier import DiscordNotifier
+from sf_apartment_aggregator.notifier import DiscordNotifier, NotificationError
 from sf_apartment_aggregator.repository import SQLiteRepository
 
 LOGGER = logging.getLogger("sf_apartment_aggregator")
@@ -68,6 +68,13 @@ class PollPipeline:
         source_results: list[SourceRunResult] = []
 
         for source in self.config.sources:
+            LOGGER.info(
+                "source_started",
+                extra={
+                    "event": "source_started",
+                    "data": {"source": source.name, "source_type": source.type, "url": str(source.url)},
+                },
+            )
             started = utcnow()
             fetched = 0
             parsed = 0
@@ -76,13 +83,58 @@ class PollPipeline:
             alerted_count = 0
             success = True
             error_message = None
+            alert_errors: list[str] = []
+            skip_reason = self._source_skip_reason(source, started)
+
+            if skip_reason:
+                finished = utcnow()
+                result = SourceRunResult(
+                    source=source.name,
+                    source_type=source.type,
+                    started_at=started,
+                    finished_at=finished,
+                    success=True,
+                    fetched_count=0,
+                    parsed_count=0,
+                    new_count=0,
+                    matched_count=0,
+                    alerted_count=0,
+                    error_message=skip_reason,
+                )
+                self.repository.record_source_run(result)
+                source_results.append(result)
+                LOGGER.info(
+                    "source_skipped",
+                    extra={
+                        "event": "source_skipped",
+                        "data": {"source": source.name, "reason": skip_reason},
+                    },
+                )
+                LOGGER.info(
+                    "source_finished",
+                    extra={
+                        "event": "source_finished",
+                        "data": {
+                            "source": source.name,
+                            "source_type": source.type,
+                            "success": True,
+                            "fetched_count": 0,
+                            "parsed_count": 0,
+                            "new_count": 0,
+                            "matched_count": 0,
+                            "alerted_count": 0,
+                            "error": skip_reason,
+                        },
+                    },
+                )
+                continue
 
             try:
                 listings = self._fetch_source_with_retries(source)
                 fetched = len(listings)
                 parsed = len(listings)
                 for listing in listings:
-                    if source.name == "craigslist_sf":
+                    if source.name == "craigslist_sf" and source.enrich_detail_pages:
                         self._enrich_craigslist_listing(listing)
                     inferred = self.filter_engine.infer_neighborhood(listing)
                     if inferred:
@@ -102,18 +154,50 @@ class PollPipeline:
                             and not self.repository.has_alert_for(outcome.canonical_url, "broad")
                         ):
                             broad_payload = self.notifier.build_payload(listing, stream="broad")
-                            self.notifier.send(broad_payload, webhook_url=self.broad_webhook_url)
-                            self.repository.record_alert(outcome.canonical_url, broad_payload, listing.scraped_at, "broad")
-                            alerted_count += 1
+                            try:
+                                self.notifier.send(broad_payload, webhook_url=self.broad_webhook_url)
+                            except NotificationError as exc:
+                                alert_errors.append(f"broad:{outcome.canonical_url}:{exc}")
+                                LOGGER.error(
+                                    "alert_send_failed",
+                                    extra={
+                                        "event": "alert_send_failed",
+                                        "data": {
+                                            "source": source.name,
+                                            "canonical_url": outcome.canonical_url,
+                                            "alert_type": "broad",
+                                            "error": str(exc),
+                                        },
+                                    },
+                                )
+                            else:
+                                self.repository.record_alert(outcome.canonical_url, broad_payload, listing.scraped_at, "broad")
+                                alerted_count += 1
                         if (
                             self.strict_webhook_url
                             and filter_result.matched
                             and not self.repository.has_alert_for(outcome.canonical_url, "strict")
                         ):
                             strict_payload = self.notifier.build_payload(listing, stream="strict")
-                            self.notifier.send(strict_payload, webhook_url=self.strict_webhook_url)
-                            self.repository.record_alert(outcome.canonical_url, strict_payload, listing.scraped_at, "strict")
-                            alerted_count += 1
+                            try:
+                                self.notifier.send(strict_payload, webhook_url=self.strict_webhook_url)
+                            except NotificationError as exc:
+                                alert_errors.append(f"strict:{outcome.canonical_url}:{exc}")
+                                LOGGER.error(
+                                    "alert_send_failed",
+                                    extra={
+                                        "event": "alert_send_failed",
+                                        "data": {
+                                            "source": source.name,
+                                            "canonical_url": outcome.canonical_url,
+                                            "alert_type": "strict",
+                                            "error": str(exc),
+                                        },
+                                    },
+                                )
+                            else:
+                                self.repository.record_alert(outcome.canonical_url, strict_payload, listing.scraped_at, "strict")
+                                alerted_count += 1
 
             except Exception as exc:  # intentionally broad to keep cycle alive per source
                 success = False
@@ -136,13 +220,30 @@ class PollPipeline:
                 new_count=new_count,
                 matched_count=matched_count,
                 alerted_count=alerted_count,
-                error_message=error_message,
+                error_message=error_message or ("; ".join(alert_errors) if alert_errors else None),
             )
             self.repository.record_source_run(result)
             source_results.append(result)
             total_new += new_count
             total_matched += matched_count
             total_alerted += alerted_count
+            LOGGER.info(
+                "source_finished",
+                extra={
+                    "event": "source_finished",
+                    "data": {
+                        "source": source.name,
+                        "source_type": source.type,
+                        "success": success,
+                        "fetched_count": fetched,
+                        "parsed_count": parsed,
+                        "new_count": new_count,
+                        "matched_count": matched_count,
+                        "alerted_count": alerted_count,
+                        "error": error_message,
+                    },
+                },
+            )
 
         summary = {
             "ran_at": datetime.utcnow().isoformat() + "Z",
@@ -221,3 +322,29 @@ class PollPipeline:
         if start < end:
             return start <= hour < end
         return hour >= start or hour < end
+
+    def _source_skip_reason(self, source: SourceConfig, started_at: datetime) -> str | None:
+        latest_run = self.repository.get_latest_source_run(source.name)
+        if not latest_run:
+            return None
+
+        finished_at_raw = latest_run.get("finished_at")
+        if not finished_at_raw:
+            return None
+        try:
+            finished_at = datetime.fromisoformat(finished_at_raw)
+        except ValueError:
+            return None
+
+        if source.min_poll_interval_minutes is not None:
+            next_allowed_at = finished_at + timedelta(minutes=source.min_poll_interval_minutes)
+            if started_at < next_allowed_at:
+                return "source_rate_limited_recent_run"
+
+        error_message = latest_run.get("error_message") or ""
+        if source.cooldown_on_block_minutes and "craigslist_blocked_page" in error_message:
+            next_allowed_at = finished_at + timedelta(minutes=source.cooldown_on_block_minutes)
+            if started_at < next_allowed_at:
+                return "source_cooldown_after_block"
+
+        return None

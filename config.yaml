@@ -7,6 +7,9 @@ sources:
   - name: craigslist_sf
     type: browser
     url: https://sfbay.craigslist.org/search/sfc/apa?max_price=3500&min_bedrooms=1
+    min_poll_interval_minutes: 15
+    cooldown_on_block_minutes: 720
+    enrich_detail_pages: false
     browser_profile_dir: ~/.sf-apt/craigslist-profile
     browser_headless: false
     browser_wait_ms: 6000

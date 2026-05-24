@@ -2,6 +2,14 @@
 
 V1 apartment watcher for San Francisco rentals.
 
+## Start Here
+
+If you are new to this repo:
+
+1. Use this `README.md` for installation, configuration, and local runtime commands.
+2. Use [`config.yaml`](/Users/nicholastang/workspace/sf-apartment-aggregator/config.yaml) as the main example runtime configuration.
+3. Use [`docs/README.md`](/Users/nicholastang/workspace/sf-apartment-aggregator/docs/README.md) only if you want roadmap or product-planning context.
+
 ## Features
 
 - Polls browser, RSS, and HTML sources and normalizes listing records.
@@ -76,7 +84,11 @@ For Craigslist browser mode:
 - Set `sources[].browser_profile_dir` to a persistent local Chrome profile path
 - Run one manual poll and complete any Craigslist challenge in the opened browser profile
 
+Direct CLI runs (`sf-apt poll ...`, `sf-apt dashboard ...`) will also load `.env` from the repo root. You do not need `launchd` for environment variables to work.
+
 ### 5. Run commands
+
+Run `poll` and `dashboard` in separate terminals if you want both at the same time.
 
 ```bash
 sf-apt poll --config config.yaml
@@ -88,7 +100,21 @@ Command behavior:
 
 - `poll`: one ingestion/filter/alert cycle
 - `backfill`: ingestion/filter cycle without alerting historical items
-- `dashboard`: runs FastAPI + static React dashboard (read-only)
+- `dashboard`: runs FastAPI + static React dashboard (read-only, does not ingest listings)
+
+During `poll`, logs are emitted as JSON to stdout. You should now see:
+
+- `poll_started` once the command begins
+- `source_started` before each site is fetched
+- `source_finished` after each site completes, with counts
+- `source_failed` if a site errors
+- `poll_summary` and `poll_done` at the end
+
+Important first-run behavior:
+
+- The first successful `poll` seeds the baseline in SQLite and usually does not send Discord alerts for already-existing listings.
+- Later `poll` runs send alerts only for newly seen matching listings.
+- If you run `sf-apt poll --config config.yaml` manually, logs appear in that terminal. They do not go to `logs/poll.out.log` unless you use `launchd` or redirect output yourself.
 
 ### 6. Open dashboard
 
@@ -98,19 +124,33 @@ With defaults from `config.yaml`, open:
 
 ## Scheduling
 
-Use system cron for polling every 20 minutes during daytime:
+Use one scheduler for your OS:
+
+- macOS: `launchd`
+- Linux: `cron` or `systemd`
+
+Example `cron` entry for polling every 20 minutes during daytime:
 
 ```cron
 */20 8-21 * * * cd /path/to/sf-apartment-aggregator && /path/to/.venv/bin/sf-apt poll --config config.yaml >> logs/poll.log 2>&1
 ```
 
-macOS recommended path: `launchd`.
+On macOS, use `launchd`:
 
 ```bash
 chmod +x scripts/run_poll.sh scripts/install_launchd_poll.sh
 ./scripts/install_launchd_poll.sh
 launchctl print gui/$(id -u)/com.nickltang.sf-apartment-aggregator.poll
 ```
+
+To watch `launchd` logs:
+
+```bash
+tail -f logs/poll.out.log
+tail -f logs/poll.err.log
+```
+
+On Linux, `systemd` is also a good option if you want a managed service/timer instead of `cron`.
 
 Optional: keep Mac awake during polling hours (8:00 to 22:00 local):
 
@@ -131,7 +171,15 @@ rm ~/Library/LaunchAgents/com.nickltang.sf-apartment-aggregator.awake.plist
 
 ## Docker
 
-Build and run both poller + dashboard services:
+Docker support is best treated as a convenience path for local experimentation, not the primary install path.
+
+Important:
+
+- `sf-apt poll` is a one-shot command, so the `aggregator` container runs one poll cycle and exits.
+- `docker compose up` does not replace `launchd`, `cron`, or `systemd` scheduling by itself.
+- The default image does not install Playwright browser binaries, so the Craigslist browser source is not a drop-in Docker workflow.
+
+Build and run the included services:
 
 ```bash
 docker compose up --build
@@ -139,7 +187,7 @@ docker compose up --build
 
 Services in [`docker-compose.yml`](/Users/nicholastang/workspace/sf-apartment-aggregator/docker-compose.yml):
 
-- `aggregator`: runs `sf-apt poll --config config.yaml`
+- `aggregator`: runs one `sf-apt poll --config config.yaml` cycle
 - `dashboard`: runs `sf-apt dashboard --config config.yaml` on port `8000`
 
 ## Project Structure

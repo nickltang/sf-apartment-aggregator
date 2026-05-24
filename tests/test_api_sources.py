@@ -1,4 +1,4 @@
-from sf_apartment_aggregator.adapters.api_sources import RentSFNowAjaxAdapter
+from sf_apartment_aggregator.adapters.api_sources import GaetaniCollectionAdapter, RentSFNowAjaxAdapter
 from sf_apartment_aggregator.config import SourceConfig
 
 
@@ -14,6 +14,23 @@ class DummySession:
 
     def post(self, url, data=None, timeout=None):  # noqa: ANN001
         return DummyResponse(self._text)
+
+
+class DummyJsonResponse(DummyResponse):
+    def __init__(self, payload: dict, status_code: int = 200):
+        super().__init__("", status_code=status_code)
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class DummyJsonSession:
+    def __init__(self, payload: dict):
+        self._payload = payload
+
+    def get(self, url, timeout=None):  # noqa: ANN001
+        return DummyJsonResponse(self._payload)
 
 
 def test_rentsfnow_adapter_prefers_dollar_price_over_first_numeric_token() -> None:
@@ -32,3 +49,25 @@ def test_rentsfnow_adapter_prefers_dollar_price_over_first_numeric_token() -> No
     assert len(listings) == 1
     assert listings[0].price == 1095
     assert listings[0].beds == 0.0
+
+
+def test_gaetani_adapter_parses_posted_timestamp() -> None:
+    source = SourceConfig(name="gaetani", type="html", url="https://example.com/gaetani.json")
+    payload = {
+        "values": [
+            {
+                "data": {
+                    "listable_uid": "abc123",
+                    "marketing_title": "1BR in Nob Hill",
+                    "address_city": "San Francisco",
+                    "posted_to_website_at": "2026-05-24T12:34:56Z",
+                }
+            }
+        ]
+    }
+    adapter = GaetaniCollectionAdapter(source, DummyJsonSession(payload))  # type: ignore[arg-type]
+    listings = adapter.fetch()
+
+    assert len(listings) == 1
+    assert listings[0].published_at is not None
+    assert listings[0].published_at.isoformat() == "2026-05-24T12:34:56+00:00"
